@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Code Debugger</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Code Debugger</h1>
+        <form method="post">
+            <textarea name="code" placeholder="Paste your code here...">{{ code or '' }}</textarea>
+            <button type="submit">Submit for Debugging</button>
+        </form>
+        {% if output %}
+        <div class="output">
+            <h2>Debug Output:</h2>
+            <pre>{{ output }}</pre>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
