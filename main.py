@@ -37,7 +37,7 @@ def ask_gpt(code, model):
 
     client = Groq()
     completion = client.chat.completions.create(
-        model="compound-beta",
+        model=model,
         messages=messages,
         temperature=1,
         max_completion_tokens=1024,
