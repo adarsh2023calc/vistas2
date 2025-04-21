@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form,HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,24 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 load_dotenv()  # Make sure to load the .env file for GROQ_API_KEY
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+
+
+
+def execute_code(language,code):
+    response = requests.post(
+        "https://emkc.org/api/v2/piston/execute",
+        json={
+            "language": language,
+            "source": code
+        }
+    )
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return HTTPException(status_code=500).with_traceback
+
 
 # Helper function to interact with the GPT API
 def ask_gpt(code, model):
@@ -62,8 +80,8 @@ async def home(request: Request):
 
 # Form submission (POST)
 @app.post("/", response_class=HTMLResponse)
-async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...)):
+async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...)):
     print(f"Selected Model: {model}")  # Debugging line
     output = ask_gpt(code, model)  # Get the GPT response
-    
-    return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model})
+    code_debugging_output= execute_code(language,code)
+    return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output})
