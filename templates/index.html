@@ -43,10 +43,10 @@
                     <option value="llama3-70b-8192" {% if model == 'llama3-70b-8192' %}selected{% endif %}>LLaMA3 70B</option>
                     <option value="qwen-qwq-32b" {% if model == 'qwen-qwq-32b' %}selected{% endif %}>Qwen-Qwq-32b</option>
                     <option value="deepseek-r1-distill-llama-70b" {% if model == 'deepseek-r1-distill-llama-70b' %}selected{% endif %}>Deepseek-r1-distill-llama-70b</option>
-                    <option value="meta-llama/llama-3-8b-instruct" {% if model == 'meta-llama/llama-3-8b-instruct' %}selected{% endif %}>LLaMA3 8B Instruct</option>
-                    <option value="meta-llama/llama-3-70b-instruct" {% if model == 'meta-llama/llama-3-70b-instruct' %}selected{% endif %}>LLaMA3 70B Instruct</option>
-                    <option value="mistral/mixtral-8x7b-instruct" {% if model == 'mistral/mixtral-8x7b-instruct' %}selected{% endif %}>Mixtral 8x7B Instruct</option>
-                    <option value="google/gemma-7b-it" {% if model == 'google/gemma-7b-it' %}selected{% endif %}>Gemma 7B IT</option>
+                    <option value="llama-3-8b-instruct" {% if model == 'llama-3-8b-instruct' %}selected{% endif %}>LLaMA3 8B Instruct</option>
+                    <option value="llama-3-70b-instruct" {% if model == 'llama-3-70b-instruct' %}selected{% endif %}>LLaMA3 70B Instruct</option>
+                    <option value="mixtral-8x7b-instruct" {% if model == 'mixtral-8x7b-instruct' %}selected{% endif %}>Mixtral 8x7B Instruct</option>
+                    <option value="gemma2-9b-it" {% if model == 'gemma2-9b-it' %}selected{% endif %}>gemma2-9b-it</option>
 
                 </select>
             
@@ -54,7 +54,9 @@
                     🚀 Submit for Debugging
                 </button>
             </form>
-            <div>
+            
+        </div>
+        <div>
             {% if output %}
                 <div class="mt-6">
                     <h2 class="text-lg font-semibold text-green-400">✅ Debug Output:</h2>
@@ -62,7 +64,6 @@
                 </div>
                 {% endif %}
             </div>
-        </div>
     </div>
 </body>
 </html>
