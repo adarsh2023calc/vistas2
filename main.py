@@ -17,18 +17,19 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
 def execute_code(language,code):
-    response = requests.post(
-        "https://emkc.org/api/v2/piston/execute",
-        json={
-            "language": language,
-            "source": code
-        }
-    )
-    
-    if response.status_code == 200:
+    try:
+
+        response = requests.post(
+            "https://emkc.org/api/v2/piston/execute",
+            json={
+                "language": language,
+                "source": code
+            }
+        )
+        
         return response.json()
-    else:
-        return HTTPException(status_code=500).with_traceback
+    except Exception as e:
+        return HTTPException(status_code=500,detail=str(e))
 
 
 # Helper function to interact with the GPT API
@@ -84,4 +85,5 @@ async def ask_groq(request: Request, code: str = Form(...), model: str = Form(..
     print(f"Selected Model: {model}")  # Debugging line
     output = ask_gpt(code, model)  # Get the GPT response
     code_debugging_output= execute_code(language,code)
+    print(code_debugging_output)
     return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output})
