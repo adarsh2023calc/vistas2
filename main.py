@@ -33,13 +33,13 @@ def execute_code(language,code):
 
 
 # Helper function to interact with the GPT API
-def ask_gpt(code, model):
+def ask_gpt(code, model,error):
 
     prompt = (
         "You are a helpful AI that reviews code, finds bugs or issues, "
         "and provides corrected code with explanations.\n"
         "We will try to debug using the following steps:\n"
-        "1. Identify the programming language.\n"
+        "1. Identify any errors in the code\n"
         "2. Understand the user's intent.\n"
         "3. Look for syntax errors.\n"
         "4. Check for semantic correctness.\n"
@@ -50,7 +50,7 @@ def ask_gpt(code, model):
     )
 
    
-    messages= [{"role": "system", "content": prompt},{"role": "user", "content": code}]
+    messages= [{"role": "system", "content": error+ prompt},{"role": "user", "content": code}]
       
 
     
@@ -78,13 +78,13 @@ def ask_gpt(code, model):
 # Homepage route (GET)
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "output": "", "model": ""})
+    return templates.TemplateResponse("index.html", {"request": request, "output": "", "model": "","error":""})
 
 # Form submission (POST)
 @app.post("/", response_class=HTMLResponse)
-async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...)):
+async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...),error:str=Form(...)):
     print(f"Selected Model: {model}")  # Debugging line
-    output = ask_gpt(code, model)  # Get the GPT response
+    output = ask_gpt(code, model,error)  
     code_debugging_output= execute_code(language,code)
     print(code_debugging_output)
     return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output})
