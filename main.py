@@ -45,7 +45,8 @@ def ask_gpt(code, model):
         "4. Check for semantic correctness.\n"
         "5. Evaluate logical correctness.\n"
         "6. Suggest improvements if needed.\n"
-        "7. Output the corrected code with explanation."
+        "7. Find any security problems like SQL Injection\n"
+        "7. Output the corrected code with explanation.\n"
     )
 
    
