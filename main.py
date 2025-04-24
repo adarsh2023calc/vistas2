@@ -1,17 +1,21 @@
 from fastapi import FastAPI, Request, Form,HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from langchain.agents import initialize_agent
+from langchain.agents.agent_types import AgentType
 from langchain_groq import ChatGroq
 from langchain.tools import Tool
-from langchain.agents import initialize_agent, AgentType
 from langchain.utilities.serpapi import SerpAPIWrapper
-
-
-
+from pydantic import BaseModel
+from passlib.context import CryptContext
+from db import users_collection  # Use relative import if db.py is in the same directory
 import requests
 import os
 from dotenv import load_dotenv
-from groq import Groq
+
+
+
+
 
 # Initialize the app and load environment variables
 app = FastAPI()
@@ -22,6 +26,8 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
 
 serp_tool = SerpAPIWrapper()
+
+
 
 
 
@@ -46,7 +52,17 @@ def search_github_issues(error: str) -> str:
 
 
 
+search_tool = Tool(
+    name="Web Search",
+    func=serp_tool.run,
+    description="Google search for coding errors, solutions, docs"
+)
 
+github_tool = Tool(
+    name="GitHub Search",
+    func=search_github_issues,
+    description="Search relevant GitHub issues"
+)
 
 
 
@@ -68,9 +84,11 @@ def execute_code(language,code):
 
 # Helper function to interact with the GPT API
 def ask_gpt(code, model,error):
+    # Setup the model
+    llm = ChatGroq(model=model)
 
-    GPT_MODEL = ChatGroq(model=model)
-    prompt = (
+    # Prompt
+    system_prompt = (
         "You are a helpful AI that reviews code, finds bugs or issues, "
         "and provides corrected code with explanations.\n\n"
         "We will try to debug using the following steps:\n"
@@ -89,23 +107,19 @@ def ask_gpt(code, model,error):
         "=== Start your analysis below ===\n"
     )
 
-    
-
-    search_tool = Tool(
-    name="Web Search",
-    func=serp_tool.run,
-    description="Useful for when you need to search the web."
-     )
-    
-
     tools = [
     Tool(name="GitHub Search", func=search_github_issues, description="Search relevant GitHub issues"),
     Tool(name="Web Search", func=serp_tool.run, description="Google search for coding errors, solutions, docs"),
-    ]
-    
+     ]
 
-    agent = initialize_agent(tools=tools, llm=GPT_MODEL, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True)
+    # Step 1: Create the ReAct agent with tools
+    agent = initialize_agent(
+    tools=tools,
+    llm=ChatGroq(model="mixtral-8x7b-32768"),  # or "llama3-70b-8192"
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True)
     response = agent.run(prompt)
+
     return response
     
 
@@ -122,3 +136,34 @@ async def ask_groq(request: Request, code: str = Form(...), model: str = Form(..
     code_debugging_output= execute_code(language,code)
     print(code_debugging_output)
     return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output})
+
+
+# Password hashing setup
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# User model for signup/login
+class User(BaseModel):
+    username: str
+    password: str
+
+# Register route
+@app.post("/register")
+def register(user: User):
+    if users_collection.find_one({"username": user.username}):
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    hashed_password = pwd_context.hash(user.password)
+    users_collection.insert_one({
+        "username": user.username,
+        "password": hashed_password
+    })
+    return {"message": "User registered successfully"}
+
+# Login route
+@app.post("/login")
+def login(user: User):
+    existing_user = users_collection.find_one({"username": user.username})
+    if not existing_user or not pwd_context.verify(user.password, existing_user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    return {"message": "Login successful"}
