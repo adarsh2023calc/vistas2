@@ -7,6 +7,7 @@ from langchain_groq import ChatGroq
 from langchain.tools import Tool
 from langchain.utilities.serpapi import SerpAPIWrapper
 from pydantic import BaseModel
+from langchain_core.exceptions import OutputParserException
 from passlib.context import CryptContext
 from db import users_collection  # Use relative import if db.py is in the same directory
 import requests
@@ -28,6 +29,11 @@ SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
 serp_tool = SerpAPIWrapper()
 
 
+
+# User model for signup/login
+class User(BaseModel):
+    username: str
+    password: str
 
 
 
@@ -66,6 +72,8 @@ github_tool = Tool(
 
 
 
+
+
 def execute_code(language,code):
     try:
 
@@ -88,24 +96,39 @@ def ask_gpt(code, model,error):
     llm = ChatGroq(model=model)
 
     # Prompt
-    system_prompt = (
-        "You are a helpful AI that reviews code, finds bugs or issues, "
-        "and provides corrected code with explanations.\n\n"
-        "We will try to debug using the following steps:\n"
-        "1. Identify any errors in the code\n"
-        "2. Understand the user's intent\n"
-        "3. Look for syntax errors\n"
-        "4. Check for semantic correctness\n"
-        "5. Evaluate logical correctness\n"
-        "6. Suggest improvements if needed\n"
-        "7. Find any security problems like SQL Injection\n"
-        "8. Output the corrected code with explanation\n\n"
-        "=== User Code ===\n"
-        f"{code}\n\n"
-        "=== Error Message ===\n"
-        f"{error}\n\n"
-        "=== Start your analysis below ===\n"
-    )
+    prompt = (
+    "You are an expert coding assistant. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
+    "Follow these exact steps when debugging:\n"
+    "1. Identify any errors in the code.\n"
+    "2. Understand the user's intended functionality.\n"
+    "3. Detect syntax errors.\n"
+    "4. Check for semantic correctness.\n"
+    "5. Verify logical correctness.\n"
+    "6. Suggest improvements where necessary.\n"
+    "7. Identify security vulnerabilities (e.g., SQL Injection).\n\n"
+    "Rules:\n"
+    "- If you are CONFIDENT and can directly correct the code without external help, SKIP Thought/Action steps and IMMEDIATELY output the Corrected Code.\n"
+    "- If you NEED to search for solutions, first write:\n"
+    "  Thought: [Explain why you need to search.]\n"
+    "  Action: [Choose ONLY one: GitHub Search or Web Search]\n"
+    "  Action Input: [What to search for]\n\n"
+    "- NEVER mix Thought and Corrected Code together.\n\n"
+    "When providing the final fix:\n"
+    "**Corrected Code:**\n"
+    "```[language]\n"
+    "[your corrected code]\n"
+    "```\n\n"
+    "**Explanation:**\n"
+    "[Explain clearly what was wrong and how you fixed it.]\n\n"
+    "=== User Code ===\n"
+    f"{code}\n\n"
+    "=== Error Message ===\n"
+    f"{error}\n\n"
+    "=== Begin your analysis below ===\n"
+
+)
+
+
 
     tools = [
     Tool(name="GitHub Search", func=search_github_issues, description="Search relevant GitHub issues"),
@@ -115,11 +138,17 @@ def ask_gpt(code, model,error):
     # Step 1: Create the ReAct agent with tools
     agent = initialize_agent(
     tools=tools,
-    llm=ChatGroq(model="mixtral-8x7b-32768"),  # or "llama3-70b-8192"
+    llm=ChatGroq(model=model),  # or "llama3-70b-8192"
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True)
-    response = agent.run(prompt)
 
+    try:
+        response = agent.run(input=prompt)
+    except ValueError as e:
+        # The ValueError contains the raw LLM output that couldn't be parsed
+        print("⚡ Output parsing failed. Capturing raw output.")
+        response = str(e)
+    
     return response
     
 
@@ -141,10 +170,7 @@ async def ask_groq(request: Request, code: str = Form(...), model: str = Form(..
 # Password hashing setup
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# User model for signup/login
-class User(BaseModel):
-    username: str
-    password: str
+
 
 # Register route
 @app.post("/register")
