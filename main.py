@@ -133,6 +133,7 @@ def ask_gpt(code, model,error):
     tools = [
     Tool(name="GitHub Search", func=search_github_issues, description="Search relevant GitHub issues"),
     Tool(name="Web Search", func=serp_tool.run, description="Google search for coding errors, solutions, docs"),
+    
      ]
 
     # Step 1: Create the ReAct agent with tools
