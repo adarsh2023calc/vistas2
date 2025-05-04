@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+langchain
+pydantic
+passlib
+dotenv
+langchain-groq
+pymongo
+google-search-results
+python-multipart
