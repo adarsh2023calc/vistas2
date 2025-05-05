@@ -9,6 +9,9 @@ from langchain.utilities.serpapi import SerpAPIWrapper
 from pydantic import BaseModel
 from langchain_core.exceptions import OutputParserException
 from passlib.context import CryptContext
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from langchain.llms import HuggingFacePipeline
+from langchain.agents import initialize_agent, Tool, AgentType
 from db import users_collection  # Use relative import if db.py is in the same directory
 import requests
 import os
@@ -92,8 +95,17 @@ def execute_code(language,code):
 
 # Helper function to interact with the GPT API
 def ask_gpt(code, model,error):
+
+
+    if model=="salesforce":
+        tokenizer = AutoTokenizer.from_pretrained("./salesforce_codegen_finetuned")
+        model = AutoModelForCausalLM.from_pretrained("./salesforce_codegen_finetuned")
+        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=500)
+        llm_model = HuggingFacePipeline(pipeline=pipe)
+
     # Setup the model
-    llm = ChatGroq(model=model)
+    else:
+        llm_model = ChatGroq(model=model)
 
     # Prompt
     prompt = (
@@ -139,7 +151,7 @@ def ask_gpt(code, model,error):
     # Step 1: Create the ReAct agent with tools
     agent = initialize_agent(
     tools=tools,
-    llm=ChatGroq(model=model),  # or "llama3-70b-8192"
+    llm=llm_model,  
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True)
 
