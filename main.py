@@ -5,6 +5,7 @@ from langchain.agents import initialize_agent
 from langchain.agents.agent_types import AgentType
 from langchain_groq import ChatGroq
 from langchain.tools import Tool
+import json
 from langchain.utilities.serpapi import SerpAPIWrapper
 from pydantic import BaseModel
 from langchain_core.exceptions import OutputParserException
@@ -15,9 +16,15 @@ from langchain.agents import initialize_agent, Tool, AgentType
 from db import users_collection  # Use relative import if db.py is in the same directory
 import requests
 import os
+import torch  
 from dotenv import load_dotenv
 
 
+
+
+# Pydantic model for request body
+class LearnRequest(BaseModel):
+    fix: str
 
 
 
@@ -95,6 +102,37 @@ def execute_code(language,code):
 
 # Helper function to interact with the GPT API
 def ask_gpt(code, model,error):
+    prompt = (
+        "You are an expert coding assistant. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
+        "Follow these exact steps when debugging:\n"
+        "1. Identify any errors in the code.\n"
+        "2. Understand the user's intended functionality.\n"
+        "3. Detect syntax errors.\n"
+        "4. Check for semantic correctness.\n"
+        "5. Verify logical correctness.\n"
+        "6. Suggest improvements where necessary.\n"
+        "7. Identify security vulnerabilities (e.g., SQL Injection).\n\n"
+        "Rules:\n"
+        "- If you are CONFIDENT and can directly correct the code without external help, SKIP Thought/Action steps and IMMEDIATELY output the Corrected Code.\n"
+        "- If you NEED to search for solutions, first write:\n"
+        "  Thought: [Explain why you need to search.]\n"
+        "  Action: [Choose ONLY one: GitHub Search or Web Search]\n"
+        "  Action Input: [What to search for]\n\n"
+        "- NEVER mix Thought and Corrected Code together.\n\n"
+        "When providing the final fix:\n"
+        "**Corrected Code:**\n"
+        "```[language]\n"
+        "[your corrected code]\n"
+        "```\n\n"
+        "**Explanation:**\n"
+        "[Explain clearly what was wrong and how you fixed it.]\n\n"
+        "=== User Code ===\n"
+        f"{code}\n\n"
+        "=== Error Message ===\n"
+        f"{error}\n\n"
+        "=== Begin your analysis below ===\n"
+
+    )
 
 
     if model=="salesforce":
@@ -102,45 +140,31 @@ def ask_gpt(code, model,error):
         model = AutoModelForCausalLM.from_pretrained("./salesforce_codegen_finetuned")
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=500)
         llm_model = HuggingFacePipeline(pipeline=pipe)
+        
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+
+        # Generate response
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=150,
+                do_sample=False,
+                top_p=0.95,
+                temperature=0.7,
+                pad_token_id=tokenizer.eos_token_id  # prevent warning for padding
+            )
+
+        # Decode the output
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return generated_text
+        
 
     # Setup the model
-    else:
-        llm_model = ChatGroq(model=model)
+    llm_model = ChatGroq(model=model)
 
     # Prompt
-    prompt = (
-    "You are an expert coding assistant. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
-    "Follow these exact steps when debugging:\n"
-    "1. Identify any errors in the code.\n"
-    "2. Understand the user's intended functionality.\n"
-    "3. Detect syntax errors.\n"
-    "4. Check for semantic correctness.\n"
-    "5. Verify logical correctness.\n"
-    "6. Suggest improvements where necessary.\n"
-    "7. Identify security vulnerabilities (e.g., SQL Injection).\n\n"
-    "Rules:\n"
-    "- If you are CONFIDENT and can directly correct the code without external help, SKIP Thought/Action steps and IMMEDIATELY output the Corrected Code.\n"
-    "- If you NEED to search for solutions, first write:\n"
-    "  Thought: [Explain why you need to search.]\n"
-    "  Action: [Choose ONLY one: GitHub Search or Web Search]\n"
-    "  Action Input: [What to search for]\n\n"
-    "- NEVER mix Thought and Corrected Code together.\n\n"
-    "When providing the final fix:\n"
-    "**Corrected Code:**\n"
-    "```[language]\n"
-    "[your corrected code]\n"
-    "```\n\n"
-    "**Explanation:**\n"
-    "[Explain clearly what was wrong and how you fixed it.]\n\n"
-    "=== User Code ===\n"
-    f"{code}\n\n"
-    "=== Error Message ===\n"
-    f"{error}\n\n"
-    "=== Begin your analysis below ===\n"
-
-)
-
-
+    
 
     tools = [
     Tool(name="GitHub Search", func=search_github_issues, description="Search relevant GitHub issues"),
@@ -168,7 +192,7 @@ def ask_gpt(code, model,error):
 # Homepage route (GET)
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "output": "", "model": "","error":""})
+    return templates.TemplateResponse("index.html", {"request": request, "code":"","output": "", "model": "","error":""})
 
 # Form submission (POST)
 @app.post("/", response_class=HTMLResponse)
@@ -206,3 +230,54 @@ def login(user: User):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
     return {"message": "Login successful"}
+
+
+@app.post("/learn")
+
+async def learn(request: LearnRequest):
+    fix = request.fix
+    
+    # Construct a Groq query to search for educational content
+    prompt = f"""
+        You're an expert programming educator.
+
+        A user encountered a bug and this is the suggested fix:
+
+        \"\"\"{fix}\"\"\"
+
+        Give 5 helpful Educational resources[Links should be working and not misplaced] that explain:
+        - Why the error occurred
+        - How the fix solves the issue
+        - Related concepts a developer should understand
+        - Only embed URLs that allow iframing.
+        
+
+        Return the result as a JSON **list** of objects, each with:
+        - "title": A short, helpful title for the resource
+        - "url": A valid link to the resource
+
+        Your output should look like this:
+        [
+        {{"title": "Understanding Null Pointer Exceptions", "url": "https://example.com/null-pointer"}},
+        ...
+        ]
+        Only output this JSON list. Do not include any extra text.
+        """
+
+
+    # Query Groq for educational resource
+
+    try:
+        llm = ChatGroq(temperature=0.7, model_name="llama3-70b-8192")
+        response = llm.invoke(prompt)
+        
+
+        # Parse JSON response from LLM
+        result = json.loads(response.content)
+        print(result)
+        
+        return {"resources":result}
+    
+    except Exception as e:
+        print(e)
+        return { "error": str(e) }

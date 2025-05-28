@@ -44,7 +44,7 @@
           </select>
         </div>
         <label class="block text-lg font-semibold mb-2">💻 Paste Your Code</label>
-        <textarea name="code" placeholder="Paste your code here..." class="w-full h-64 bg-[#0f172a] border border-[#475569] rounded-lg px-4 py-3 text-sm text-white resize-none"></textarea>
+        <textarea name="code" placeholder="Paste your code here..." class="w-full h-64 bg-[#0f172a] border border-[#475569] rounded-lg px-4 py-3 text-sm text-white resize-none">{{code or " "}}</textarea>
         <input type="hidden" name="error" id="hidden-error-msg">
 
         <label for="llm-select" class="block mb-2 text-sm font-medium text-white mt-4">Choose an LLM model:</label>
@@ -67,7 +67,57 @@
     {% if output %}
       <div class="mt-6 w-full max-w-4xl">
         <h2 class="text-lg font-semibold text-green-400">✅ Debug Output:</h2>
-        <pre class="mt-2 bg-[#0f172a] p-4 rounded-lg border border-green-500 text-green-300 whitespace-pre-wrap">{{ output }}</pre>
+        <pre id="output-id" class="mt-2 bg-[#0f172a] p-4 rounded-lg border border-green-500 text-green-300 whitespace-pre-wrap">{{ output }}</pre>
+
+        <div class="mt-4">
+          <button onclick="fetchLearningResources()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+            📘 Learn from this Fix
+          </button>
+          <script>
+            async function fetchLearningResources() {
+                
+                const fix = document.getElementById('output-id').innerText; 
+                
+                try {
+                  const response = await fetch('/learn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({fix})
+                  });
+
+                  if (!response.ok) throw new Error("Failed to fetch resources");
+
+                  const data = await response.json();
+                
+                  const list = document.getElementById('resource-list');
+                  list.innerHTML = "";
+
+                  data.resources.forEach(resource => {
+                    const item = document.createElement('li');
+                    const iframe= document.createElement('iframe');
+                    iframe.src = resource.url;
+                    iframe.target = "_blank";
+                    iframe.height="370";
+                    iframe.width="400";
+                    iframe.name = resource.title;
+                    item.appendChild(iframe);
+                    list.appendChild(item);
+                  });
+
+                  document.getElementById('learn-resources').classList.remove('hidden');
+                } catch (error) {
+                  alert("Error loading resources:", error);
+        
+                }
+          }
+
+          </script>
+        </div>
+      
+        <div id="learn-resources" class="mt-4 space-y-3 hidden">
+          <h3 class="text-lg font-bold text-blue-400">📚 Suggested Learning Resources:</h3>
+          <ul id="resource-list" class="list-disc list-inside text-blue-300"></ul>
+        </div>
       </div>
     {% endif %}
 
@@ -148,6 +198,8 @@
         console.error('Error:', error);
       }
     }
+
+    
   </script>
 
 </body>
