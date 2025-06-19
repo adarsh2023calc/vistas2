@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Form,HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse,JSONResponse
 from fastapi.templating import Jinja2Templates
 from langchain.agents import initialize_agent
 from langchain.agents.agent_types import AgentType
@@ -13,12 +13,13 @@ from passlib.context import CryptContext
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from langchain.llms import HuggingFacePipeline
 from langchain.agents import initialize_agent, Tool, AgentType
-from db import users_collection  # Use relative import if db.py is in the same directory
+from db import users_collection,feedback_collection , store_feedback
 import requests
 import os
 import torch  
+from rlhf import analyze_feedback,update_model_weights
 from dotenv import load_dotenv
-
+from datetime import datetime, timedelta
 
 
 
@@ -51,7 +52,179 @@ class User(BaseModel):
     password: str
 
 
+# Global variables to store current debugging session info
+current_debug_session = {
+    'code': '',
+    'error': '',
+    'output': ''
+}
 
+
+@app.post("/submit-feedback")
+async def submit_feedback(feedback: Feedback):
+    try:
+        # Analyze feedback
+        feedback_analysis = analyze_feedback(
+            feedback.feedback_text,
+            current_debug_session['code'],
+            current_debug_session['error']
+        )
+        
+        # Store feedback with analysis
+        success = store_feedback(
+            feedback_type=feedback.feedback_type,
+            feedback_text=feedback.feedback_text,
+            code=current_debug_session['code'],
+            error=current_debug_session['error'],
+            output=current_debug_session['output']
+        )
+        
+        if success:
+            # Update model weights based on feedback
+            update_model_weights(feedback_analysis)
+            
+            return JSONResponse(
+                content={
+                    "message": "Feedback submitted and analyzed successfully",
+                    "analysis": feedback_analysis
+                },
+                status_code=200
+            )
+        else:
+            raise HTTPException(status_code=500, detail="Failed to store feedback")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+@app.get("/feedback-trends")
+async def get_feedback_trends():
+    try:
+        # Get feedback trends over time (last 30 days)
+        pipeline = [
+            {
+                "$match": {
+                    "timestamp": {
+                        "$gte": datetime.utcnow() - timedelta(days=30)
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "$dateToString": {
+                            "format": "%Y-%m-%d",
+                            "date": "$timestamp"
+                        }
+                    },
+                    "sentiment_avg": {"$avg": "$analysis.sentiment_score"},
+                    "positive_count": {
+                        "$sum": {"$cond": [{"$eq": ["$feedback_type", "positive"]}, 1, 0]}
+                    },
+                    "negative_count": {
+                        "$sum": {"$cond": [{"$eq": ["$feedback_type", "negative"]}, 1, 0]}
+                    },
+                    "total_count": {"$sum": 1}
+                }
+            },
+            {"$sort": {"_id": 1}}
+        ]
+        
+        trends = list(feedback_collection.aggregate(pipeline))
+        
+        return JSONResponse(content={
+            "daily_trends": [
+                {
+                    "date": day["_id"],
+                    "average_sentiment": day["sentiment_avg"],
+                    "positive_ratio": day["positive_count"] / day["total_count"],
+                    "negative_ratio": day["negative_count"] / day["total_count"],
+                    "total_feedback": day["total_count"]
+                } for day in trends
+            ],
+            "trend_analysis": {
+                "total_days": len(trends),
+                "sentiment_trend": "improving" if len(trends) > 1 and trends[-1]["sentiment_avg"] > trends[0]["sentiment_avg"] else "declining",
+                "feedback_volume_trend": sum(day["total_count"] for day in trends) / len(trends) if trends else 0
+            }
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/feedback-analytics")
+async def get_feedback_analytics():
+    try:
+        # Get aggregated statistics from MongoDB
+        pipeline = [
+            {
+                "$group": {
+                    "_id": None,
+                    "total_count": {"$sum": 1},
+                    "avg_sentiment": {"$avg": "$analysis.sentiment_score"},
+                    "positive_count": {
+                        "$sum": {"$cond": [{"$eq": ["$feedback_type", "positive"]}, 1, 0]}
+                    },
+                    "negative_count": {
+                        "$sum": {"$cond": [{"$eq": ["$feedback_type", "negative"]}, 1, 0]}
+                    }
+                }
+            }
+        ]
+        overall_stats = list(feedback_collection.aggregate(pipeline))[0]
+
+        # Get top error types
+        error_pipeline = [
+            {"$group": {"_id": "$analysis.error_type", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5}
+        ]
+        top_errors = list(feedback_collection.aggregate(error_pipeline))
+
+        # Get code complexity patterns
+        complexity_pipeline = [
+            {
+                "$group": {
+                    "_id": None,
+                    "avg_code_length": {"$avg": "$analysis.code_length"},
+                    "error_handling_count": {
+                        "$sum": {"$cond": ["$analysis.complexity_metrics.has_error_handling", 1, 0]}
+                    },
+                    "commented_code_count": {
+                        "$sum": {"$cond": ["$analysis.complexity_metrics.has_comments", 1, 0]}
+                    }
+                }
+            }
+        ]
+        complexity_stats = list(feedback_collection.aggregate(complexity_pipeline))[0]
+
+        return JSONResponse(content={
+            "overall_statistics": {
+                "total_feedback": overall_stats["total_count"],
+                "average_sentiment": overall_stats["avg_sentiment"],
+                "positive_feedback_ratio": overall_stats["positive_count"] / overall_stats["total_count"],
+                "negative_feedback_ratio": overall_stats["negative_count"] / overall_stats["total_count"]
+            },
+            "top_error_types": {
+                error["_id"]: error["count"] for error in top_errors
+            },
+            "code_patterns": {
+                "average_code_length": complexity_stats["avg_code_length"],
+                "error_handling_percentage": (complexity_stats["error_handling_count"] / overall_stats["total_count"]) * 100,
+                "commented_code_percentage": (complexity_stats["commented_code_count"] / overall_stats["total_count"]) * 100
+            },
+            "improvement_suggestions": [
+                f"Focus on improving {error['_id']} handling" for error in top_errors
+            ]
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+    
 def search_github_issues(error: str) -> str:
     url = f"https://api.github.com/search/issues?q={error}+in:title,body+type:issue"
     headers = {

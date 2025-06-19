@@ -16,11 +16,6 @@ users_collection = db["users"]
 print("Mongo URI:", mongo_uri)
   
 
-
-
-load_dotenv()
-mongo_uri = os.getenv("MONGO_URI")
-
 try:
     client = MongoClient(mongo_uri)
     # Test the connection
