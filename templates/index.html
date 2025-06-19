@@ -43,8 +43,17 @@
             <option value="html">HTML</option>
           </select>
         </div>
-        <label class="block text-lg font-semibold mb-2">💻 Paste Your Code</label>
-        <textarea name="code" placeholder="Paste your code here..." class="w-full h-64 bg-[#0f172a] border border-[#475569] rounded-lg px-4 py-3 text-sm text-white resize-none">{{code or " "}}</textarea>
+        
+
+        <label class="block text-lg font-semibold mb-2">💻 Paste Your Code or Screenshot</label>
+
+        <div id="paste-area"
+            contenteditable="true"
+            class="w-full h-64 bg-[#0f172a] border border-[#475569] rounded-lg px-4 py-3 text-sm text-white overflow-auto resize-none"
+            placeholder="Paste your code or screenshot here..."> 
+        </div>
+
+        <input type="hidden" name="code" id="hidden-code">
         <input type="hidden" name="error" id="hidden-error-msg">
 
         <label for="llm-select" class="block mb-2 text-sm font-medium text-white mt-4">Choose an LLM model:</label>
@@ -65,6 +74,17 @@
 
     <!-- Output section -->
     {% if output %}
+          <div class="mt-3 w-full max-w-4xl bg-gray-100 p-6 rounded-lg shadow">
+        <h2 class="text-2xl font-semibold mb-4 text-black">Code Quality Analysis</h2>
+        <ul class="list-disc list-inside text-black space-y-1">
+          <li><strong>Readability:</strong> {{ code_quality.readability }}</li>
+          <li><strong>Efficiency:</strong> {{ code_quality.efficiency }}</li>
+          <li><strong>Modularity:</strong> {{ code_quality.modularity }}</li>
+          <li><strong>Comments:</strong> {{ code_quality.comments }}</li>
+          <li><strong>Overall Score:</strong> {{ code_quality.overall_score }}/100</li>
+        </ul>
+      </div>
+
       <div class="mt-6 w-full max-w-4xl">
         <h2 class="text-lg font-semibold text-green-400">✅ Debug Output:</h2>
         <pre id="output-id" class="mt-2 bg-[#0f172a] p-4 rounded-lg border border-green-500 text-green-300 whitespace-pre-wrap">{{ output }}</pre>
@@ -94,14 +114,13 @@
 
                   data.resources.forEach(resource => {
                     const item = document.createElement('li');
-                    const iframe= document.createElement('iframe');
-                    iframe.src = resource.url;
-                    iframe.target = "_blank";
-                    iframe.height="370";
-                    iframe.width="400";
-                    iframe.name = resource.title;
-                    item.appendChild(iframe);
+                    const link= document.createElement('a');
+                    link.href = resource.url;
+                    link.text = resource.title;
+                    link.target = '_blank';
+                    item.appendChild(link);
                     list.appendChild(item);
+                    
                   });
 
                   document.getElementById('learn-resources').classList.remove('hidden');
@@ -110,6 +129,37 @@
         
                 }
           }
+          </script>
+
+          <script>
+            
+  const pasteArea = document.getElementById('paste-area');
+  const hiddenCode = document.getElementById('hidden-code');
+  
+
+        pasteArea.addEventListener('paste', async (event) => {
+          const items = (event.clipboardData || window.clipboardData).items;
+          for (const item of items) {
+            if (item.type.indexOf("image") === 0) {
+              const file = item.getAsFile();
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                const img = document.createElement("img");
+                img.src = evt.target.result;
+                img.className = "my-2 rounded max-w-full";
+                pasteArea.appendChild(img);
+              };
+              reader.readAsDataURL(file);
+              event.preventDefault();
+            }
+          }
+        });
+
+        // On form submit, save HTML content to the hidden input
+        document.querySelector("form")?.addEventListener("submit", () => {
+          hiddenCode.value = pasteArea.textContent;
+        });
+
 
           </script>
         </div>
@@ -125,6 +175,21 @@
       <div class="mt-6 w-full max-w-4xl">
         <h2 class="text-lg font-semibold text-green-400">✅ Console Output:</h2>
         <pre class="mt-2 bg-[#0f172a] p-4 rounded-lg border border-green-500 text-green-300 whitespace-pre-wrap">{{ debug }}</pre>
+      </div>
+
+      <div class = "mt-3 w-3">
+        <h2 class="text-lg font-semibold text-white">Was this code helpful for you?</h2>
+        <div>
+
+          <button type="submit" class="w-full bg-red-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-6">
+            More Review required 
+          <button type ="submit" class="w-full bg-green-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-6">
+            It's ok 
+          </button>
+          <textarea placeholder="Enter what did you want from "></textarea>
+        </button> 
+        </div>
+        
       </div>
     {% endif %}
 

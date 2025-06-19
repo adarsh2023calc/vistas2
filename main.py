@@ -4,11 +4,11 @@ from fastapi.templating import Jinja2Templates
 from langchain.agents import initialize_agent
 from langchain.agents.agent_types import AgentType
 from langchain_groq import ChatGroq
+from groq import Groq
 from langchain.tools import Tool
 import json
 from langchain.utilities.serpapi import SerpAPIWrapper
 from pydantic import BaseModel
-from langchain_core.exceptions import OutputParserException
 from passlib.context import CryptContext
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from langchain.llms import HuggingFacePipeline
@@ -18,6 +18,11 @@ import requests
 import os
 import torch  
 from dotenv import load_dotenv
+
+
+
+
+
 
 
 
@@ -82,6 +87,29 @@ github_tool = Tool(
 
 
 
+
+
+def clean_llm_output_with_groq(raw_output):
+    prompt = f"""The following text is a raw output from a language model that failed to parse.
+        It may contain error messages or parsing failure notes.
+        Please remove all mentions of parsing errors or exceptions and return only the meaningful assistant response.
+
+        Raw Output:
+        \"\"\"{raw_output}\"\"\"
+
+        Cleaned Response:"""
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"),)
+
+    response = client.chat.completions.create(
+        model="llama3-70b-8192", 
+        messages=[
+            {"role": "system", "content": "You are an assistant that cleans malformed LLM output."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.2
+    )
+
+    return response.choices[0].message.content.strip()
 
 
 def execute_code(language,code):
@@ -181,11 +209,13 @@ def ask_gpt(code, model,error):
 
     try:
         response = agent.run(input=prompt)
+
     except ValueError as e:
         # The ValueError contains the raw LLM output that couldn't be parsed
         print("⚡ Output parsing failed. Capturing raw output.")
         response = str(e)
-    
+        response = clean_llm_output_with_groq(response)
+
     return response
     
 
@@ -199,9 +229,12 @@ async def home(request: Request):
 async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...),error:str=Form(...)):
     print(f"Selected Model: {model}")  # Debugging line
     output = ask_gpt(code, model,error)  
+    if len(code.split()) > 1000:
+        code = "\n".join(code.split("\n")[:100]) + "\n# Code truncated due to size limit"
     code_debugging_output= execute_code(language,code)
-    print(code_debugging_output)
-    return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output})
+    code_quality_response = AI_Code_Reviewer(code)
+    return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output,"code_quality":code_quality_response})
+
 
 
 # Password hashing setup
@@ -270,8 +303,6 @@ async def learn(request: LearnRequest):
     try:
         llm = ChatGroq(temperature=0.7, model_name="llama3-70b-8192")
         response = llm.invoke(prompt)
-        
-
         # Parse JSON response from LLM
         result = json.loads(response.content)
         print(result)
@@ -279,5 +310,79 @@ async def learn(request: LearnRequest):
         return {"resources":result}
     
     except Exception as e:
-        print(e)
-        return { "error": str(e) }
+        print(f"Initial parsing error: {e}")
+
+        try:
+            # Retry using the LLM to fix the malformed JSON
+            fix_prompt = f"""The following text was supposed to be a JSON response but failed to parse:
+            Please correct it and return a valid JSON object only. No explanation needed."""
+            
+            fixed_response = llm.invoke(fix_prompt)
+            result = json.loads(fixed_response.content)
+            print("Fixed using LLM:", result)
+            return result
+
+        except Exception as inner_e:
+            print(f"Fix attempt failed: {inner_e}")
+            return {"error": f"Original error: {e}", "fix_attempt_error": str(inner_e)}
+
+
+
+
+
+def AI_Code_Reviewer(code):
+    prompt = f'''You are a strict code reviewer. 
+                Here is the code:
+
+                {code}
+
+                Analyze the following code and return a score from 0 to 100 based only on:
+                1. Code readability
+                2. Naming conventions
+                3. Modularity and reuse
+                4. Commenting and documentation
+                5. Error handling (if applicable)
+
+                Respond only in this exact JSON format. Do not add explanations or markdown:
+
+                {{
+                "readability": "Good",
+                "efficiency": "Moderate",
+                "modularity": "Excellent",
+                "comments": "Lacking",
+                "overall_score": 75
+                }}
+                Only output this JSON list. Do not include any extra text.
+                '''
+
+    try:
+        llm = ChatGroq(temperature=0.2, model_name="llama3-70b-8192")
+        response = llm.invoke(prompt)
+        print(response)
+        # Parse JSON response from LLM
+        result = json.loads(response.content)
+        
+        
+        return result
+    
+    except Exception as e:
+        print(f"Initial parsing error: {e}")
+
+        try:
+            # Retry using the LLM to fix the malformed JSON
+            fix_prompt = f"""The following text was supposed to be a JSON response but failed to parse:
+            Please correct it and return a valid JSON object only. No explanation needed."""
+            
+            fixed_response = llm.invoke(fix_prompt)
+            result = json.loads(fixed_response.content)
+            print("Fixed using LLM:", result)
+            return result
+
+        except Exception as inner_e:
+            print(f"Fix attempt failed: {inner_e}")
+            return {"error": f"Original error: {e}", "fix_attempt_error": str(inner_e)}
+
+        
+    
+    
+
