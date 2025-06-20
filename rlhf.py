@@ -13,7 +13,7 @@ def analyze_feedback(feedback_text: str, code: str, error: str) -> dict:
     # Sentiment analysis
     blob = TextBlob(feedback_text)
     sentiment_score = blob.sentiment.polarity
-    
+    print(sentiment_score)
     # Extract common patterns/issues
     analysis = {
         'sentiment': sentiment_score,

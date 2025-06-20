@@ -177,18 +177,22 @@
         <pre class="mt-2 bg-[#0f172a] p-4 rounded-lg border border-green-500 text-green-300 whitespace-pre-wrap">{{ debug }}</pre>
       </div>
 
-      <div class = "mt-3 w-3">
-        <h2 class="text-lg font-semibold text-white">Was this code helpful for you?</h2>
-        <div>
-
-          <button type="submit" class="w-full bg-red-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-6">
-            More Review required 
-          <button type ="submit" class="w-full bg-green-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-6">
-            It's ok 
-          </button>
-          <textarea placeholder="Enter what did you want from "></textarea>
-        </button> 
+      <div class="mt-4 p-4 bg-[#1e293b] rounded-lg">
+          <h3 class="text-lg font-semibold mb-3">Was this debugging suggestion helpful? 🤔</h3>
+          <div class="flex items-center space-x-4">
+            <button onclick="submitFeedback('positive')" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200">
+              👍 Yes, it helped!
+            </button>
+            <button onclick="submitFeedback('negative')" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200">
+              👎 No, needs improvement
+            </button>
+          </div>
+          <div class="mt-4">
+            <textarea id="feedback-text" placeholder="Optional: Help us improve by providing more specific feedback..." class="w-full bg-[#334155] border border-[#475569] rounded-lg px-3 py-2 text-sm text-white h-24"></textarea>
+          </div>
         </div>
+      </div>
+    </div>
         
       </div>
     {% endif %}
@@ -264,6 +268,33 @@
       }
     }
 
+
+    async function submitFeedback(type) {
+      const feedbackText = document.getElementById('feedback-text').value;
+      try {
+        const response = await fetch('/submit_feedback', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            feedback_type: type,
+            feedback_text: feedbackText,
+          })
+        });
+        
+        if (response.ok) {
+          alert('Thank you for your feedback! 🙏');
+          document.getElementById('feedback-text').value = '';
+        } else {
+          throw new Error('Failed to submit feedback');
+        }
+      } catch (error) {
+        console.error('Error submitting feedback:', error);
+        alert('Failed to submit feedback. Please try again.');
+      }
+    }
+  
     
   </script>
 

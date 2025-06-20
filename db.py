@@ -3,32 +3,11 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+from textblob import TextBlob
 
 
-load_dotenv()
-mongo_uri = os.getenv("MONGO_URI")
 
-client = MongoClient(mongo_uri)
-
-# Use these names ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-db = client["vistas_login"]  
-users_collection = db["users"]  
-print("Mongo URI:", mongo_uri)
-  
-
-try:
-    client = MongoClient(mongo_uri)
-    # Test the connection
-    client.admin.command('ping')
-    print("Successfully connected to MongoDB!")
-    
-    db = client["vistas_login"]  
-    users_collection = db["users"]
-    feedback_collection = db["feedback"]
-    feedback_collection.create_index([('timestamp', -1)])
-    feedback_collection.create_index([('feedback_type', 1)])
-    
-    def store_feedback(feedback_type: str, feedback_text: str, code: str, error: str, output: str) -> bool:
+def store_feedback(feedback_type: str, feedback_text: str, code: str, error: str, output: str) -> bool:
         """Store user feedback with analysis in MongoDB.
         
         Args:
@@ -42,7 +21,7 @@ try:
             bool: True if feedback was stored successfully
         """
         try:
-            from textblob import TextBlob
+            
             
             # Perform sentiment analysis
             blob = TextBlob(feedback_text)
@@ -73,8 +52,7 @@ try:
             }
             
             # Store in MongoDB
-            result = feedback_collection.insert_one(feedback_doc)
-            
+            feedback_collection.insert_one(feedback_doc)
             # Create indexes for analysis fields if they don't exist
             feedback_collection.create_index([('analysis.sentiment_score', 1)])
             feedback_collection.create_index([('analysis.error_type', 1)])
@@ -84,6 +62,31 @@ try:
             print(f"Failed to store feedback: {e}")
             return False
             
+
+load_dotenv()
+mongo_uri = os.getenv("MONGO_URI")
+
+client = MongoClient(mongo_uri)
+
+# Use these names ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+db = client["vistas_login"]  
+users_collection = db["users"]  
+print("Mongo URI:", mongo_uri)
+  
+
+try:
+    client = MongoClient(mongo_uri)
+    # Test the connection
+    client.admin.command('ping')
+    print("Successfully connected to MongoDB!")
+    
+    db = client["vistas_login"]  
+    users_collection = db["users"]
+    feedback_collection = db["feedback"]
+    feedback_collection.create_index([('timestamp', -1)])
+    feedback_collection.create_index([('feedback_type', 1)])
+    
+    
 except Exception as e:
     print(f"Failed to connect to MongoDB: {e}")
     raise

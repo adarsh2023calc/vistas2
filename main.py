@@ -10,8 +10,6 @@ import json
 from langchain.utilities.serpapi import SerpAPIWrapper
 from pydantic import BaseModel
 from passlib.context import CryptContext
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from langchain.llms import HuggingFacePipeline
 from langchain.agents import initialize_agent, Tool, AgentType
 from db import users_collection,feedback_collection , store_feedback
 import requests
@@ -20,17 +18,22 @@ import torch
 from rlhf import analyze_feedback,update_model_weights
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from learn import AI_Code_Reviewer
 
-
-
-
-
-
-
+current_debug_session = {
+    'code': '',
+    'error': '',
+    'output': ''
+    }
 
 # Pydantic model for request body
 class LearnRequest(BaseModel):
     fix: str
+
+class Feedback(BaseModel):
+    feedback_type: str
+    feedback_text: str
+
 
 
 
@@ -53,49 +56,45 @@ class User(BaseModel):
 
 
 # Global variables to store current debugging session info
-current_debug_session = {
-    'code': '',
-    'error': '',
-    'output': ''
-}
 
 
-@app.post("/submit-feedback")
+
+@app.post("/submit_feedback")
 async def submit_feedback(feedback: Feedback):
-    try:
-        # Analyze feedback
-        feedback_analysis = analyze_feedback(
-            feedback.feedback_text,
-            current_debug_session['code'],
-            current_debug_session['error']
-        )
-        
-        # Store feedback with analysis
-        success = store_feedback(
-            feedback_type=feedback.feedback_type,
-            feedback_text=feedback.feedback_text,
-            code=current_debug_session['code'],
-            error=current_debug_session['error'],
-            output=current_debug_session['output']
-        )
-        
-        if success:
-            # Update model weights based on feedback
-            update_model_weights(feedback_analysis)
-            
-            return JSONResponse(
-                content={
-                    "message": "Feedback submitted and analyzed successfully",
-                    "analysis": feedback_analysis
-                },
-                status_code=200
-            )
-        else:
-            raise HTTPException(status_code=500, detail="Failed to store feedback")
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+   
 
+    # Analyze feedback
+    feedback_analysis = analyze_feedback(
+        feedback.feedback_text,
+        current_debug_session['code'],
+        current_debug_session['error']
+    )
+    print(feedback_analysis)
+    
+    # Store feedback with analysis
+    success = store_feedback(
+        feedback_type=feedback.feedback_type,
+        feedback_text=feedback.feedback_text,
+        code=current_debug_session['code'],
+        error=current_debug_session['error'],
+        output=current_debug_session['output']
+    )
+    
+    if success:
+        # Update model weights based on feedback
+        update_model_weights(feedback_analysis)
+        
+        return JSONResponse(
+            content={
+                "message": "Feedback submitted and analyzed successfully",
+                "analysis": feedback_analysis
+            },
+            status_code=200
+        )
+    else:
+        raise HTTPException(status_code=500, detail="Failed to store feedback due to")
+        
+    
 
 
 
@@ -153,6 +152,9 @@ async def get_feedback_trends():
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
 
 @app.get("/feedback-analytics")
 async def get_feedback_analytics():
@@ -246,18 +248,6 @@ def search_github_issues(error: str) -> str:
 
 
 
-search_tool = Tool(
-    name="Web Search",
-    func=serp_tool.run,
-    description="Google search for coding errors, solutions, docs"
-)
-
-github_tool = Tool(
-    name="GitHub Search",
-    func=search_github_issues,
-    description="Search relevant GitHub issues"
-)
-
 
 
 
@@ -303,6 +293,9 @@ def execute_code(language,code):
 
 # Helper function to interact with the GPT API
 def ask_gpt(code, model,error):
+     # Store current debugging session info for feedback
+    current_debug_session['code'] = code
+    current_debug_session['error'] = error
     prompt = (
         "You are an expert coding assistant. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
         "Follow these exact steps when debugging:\n"
@@ -336,35 +329,10 @@ def ask_gpt(code, model,error):
     )
 
 
-    if model=="salesforce":
-        tokenizer = AutoTokenizer.from_pretrained("./salesforce_codegen_finetuned")
-        model = AutoModelForCausalLM.from_pretrained("./salesforce_codegen_finetuned")
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=500)
-        llm_model = HuggingFacePipeline(pipeline=pipe)
-        
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-
-
-        # Generate response
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=150,
-                do_sample=False,
-                top_p=0.95,
-                temperature=0.7,
-                pad_token_id=tokenizer.eos_token_id  # prevent warning for padding
-            )
-
-        # Decode the output
-        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return generated_text
-        
-
     # Setup the model
     llm_model = ChatGroq(model=model)
 
-    # Prompt
+   
     
 
     tools = [
@@ -382,13 +350,16 @@ def ask_gpt(code, model,error):
 
     try:
         response = agent.run(input=prompt)
+        current_debug_session['output'] = response
 
     except ValueError as e:
         # The ValueError contains the raw LLM output that couldn't be parsed
         print("⚡ Output parsing failed. Capturing raw output.")
         response = str(e)
         response = clean_llm_output_with_groq(response)
-
+        current_debug_session['output']= response
+    
+    print(current_debug_session)
     return response
     
 
@@ -502,60 +473,4 @@ async def learn(request: LearnRequest):
 
 
 
-
-def AI_Code_Reviewer(code):
-    prompt = f'''You are a strict code reviewer. 
-                Here is the code:
-
-                {code}
-
-                Analyze the following code and return a score from 0 to 100 based only on:
-                1. Code readability
-                2. Naming conventions
-                3. Modularity and reuse
-                4. Commenting and documentation
-                5. Error handling (if applicable)
-
-                Respond only in this exact JSON format. Do not add explanations or markdown:
-
-                {{
-                "readability": "Good",
-                "efficiency": "Moderate",
-                "modularity": "Excellent",
-                "comments": "Lacking",
-                "overall_score": 75
-                }}
-                Only output this JSON list. Do not include any extra text.
-                '''
-
-    try:
-        llm = ChatGroq(temperature=0.2, model_name="llama3-70b-8192")
-        response = llm.invoke(prompt)
-        print(response)
-        # Parse JSON response from LLM
-        result = json.loads(response.content)
-        
-        
-        return result
-    
-    except Exception as e:
-        print(f"Initial parsing error: {e}")
-
-        try:
-            # Retry using the LLM to fix the malformed JSON
-            fix_prompt = f"""The following text was supposed to be a JSON response but failed to parse:
-            Please correct it and return a valid JSON object only. No explanation needed."""
-            
-            fixed_response = llm.invoke(fix_prompt)
-            result = json.loads(fixed_response.content)
-            print("Fixed using LLM:", result)
-            return result
-
-        except Exception as inner_e:
-            print(f"Fix attempt failed: {inner_e}")
-            return {"error": f"Original error: {e}", "fix_attempt_error": str(inner_e)}
-
-        
-    
-    
 
