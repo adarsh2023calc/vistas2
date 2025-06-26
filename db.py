@@ -7,7 +7,11 @@ from textblob import TextBlob
 
 
 
-def store_feedback(feedback_type: str, feedback_text: str, code: str, error: str, output: str) -> bool:
+def store_feedback(feedback_type: str, feedback_text: str, code: str, error: str, output: str,
+        preferred_response,
+        non_preferred_response,
+        comparison_metrics,
+        context_info) -> bool:
         """Store user feedback with analysis in MongoDB.
         
         Args:
@@ -47,8 +51,13 @@ def store_feedback(feedback_type: str, feedback_text: str, code: str, error: str
                         'lines_of_code': len(code.splitlines()),
                         'has_error_handling': 'try' in code.lower() and 'except' in code.lower(),
                         'has_comments': '#' in code or '"""' in code
-                    }
+                    },
+                'preferred_response':preferred_response,
+                'non_preferred_response':non_preferred_response,
+                'comparison_metrics':comparison_metrics,
+                'context_info':context_info
                 }
+                
             }
             
             # Store in MongoDB

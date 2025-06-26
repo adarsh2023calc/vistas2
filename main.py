@@ -19,6 +19,15 @@ from rlhf import analyze_feedback,update_model_weights
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from learn import AI_Code_Reviewer
+from manage import PromptManager
+
+
+
+# Global variables to store current debugging session info
+
+   
+
+
 
 current_debug_session = {
     'code': '',
@@ -34,7 +43,13 @@ class Feedback(BaseModel):
     feedback_type: str
     feedback_text: str
 
+# User model for signup/login
+class User(BaseModel):
+    username: str
+    password: str
 
+
+# Global variables to store current debugging session info
 
 
 # Initialize the app and load environment variables
@@ -46,17 +61,49 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
 
 serp_tool = SerpAPIWrapper()
+prompt_manager = PromptManager()
+
+
+class Feedback(BaseModel):
+    feedback_type: str
+    feedback_text: str
+    preferred_response: str | None = None
+    non_preferred_response: str | None = None
+    comparison_metrics: dict | None = None  # Additional metrics for comparing responses
+    context_info: dict | None = None  # Context in which the responses were generated
 
 
 
-# User model for signup/login
-class User(BaseModel):
-    username: str
-    password: str
 
 
-# Global variables to store current debugging session info
 
+
+import requests
+
+def search_stackoverflow(query: str, max_results: int = 5):
+    """
+    Search Stack Overflow for programming questions.
+    """
+    url = "https://api.stackexchange.com/2.3/search/advanced"
+    params = {
+        "order": "desc",
+        "sort": "relevance",
+        "q": query,
+        "site": "stackoverflow",
+        "filter": "withbody",
+        "pagesize": max_results
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        return f"Error: {response.status_code}"
+
+    data = response.json()
+    results = []
+    for item in data.get("items", []):
+        title = item["title"]
+        link = item["link"]
+        results.append(f"{title}\n{link}")
+    return "\n\n".join(results)
 
 
 @app.post("/submit_feedback")
@@ -71,13 +118,23 @@ async def submit_feedback(feedback: Feedback):
     )
     print(feedback_analysis)
     
-    # Store feedback with analysis
+    # Add DPO-specific analysis for pairwise feedback
+    if feedback.preferred_response and feedback.non_preferred_response:
+        feedback_analysis['is_pairwise'] = True
+        feedback_analysis['comparison_metrics'] = feedback.comparison_metrics or {}
+        feedback_analysis['context_info'] = feedback.context_info or {}
+    
+    # Store feedback with analysis and DPO data
     success = store_feedback(
         feedback_type=feedback.feedback_type,
         feedback_text=feedback.feedback_text,
         code=current_debug_session['code'],
         error=current_debug_session['error'],
-        output=current_debug_session['output']
+        output=current_debug_session['output'],
+        preferred_response=feedback.preferred_response,
+        non_preferred_response=feedback.non_preferred_response,
+        comparison_metrics=feedback.comparison_metrics,
+        context_info=feedback.context_info
     )
     
     if success:
@@ -96,6 +153,33 @@ async def submit_feedback(feedback: Feedback):
         
     
 
+@app.get("/dpo-training-data")
+async def get_dpo_training_data():
+    try:
+        # Query MongoDB for pairwise feedback data
+        pipeline = [
+            {
+                "$match": {
+                    "dpo_data.is_pairwise": True
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "preferred": "$dpo_data.preferred_response",
+                    "non_preferred": "$dpo_data.non_preferred_response",
+                    "code_context": "$code",
+                    "error_context": "$error",
+                    "feedback_type": 1,
+                    "analysis": 1
+                }
+            }
+        ]
+        
+        dpo_data = list(feedback_collection.aggregate(pipeline))
+        return JSONResponse(content={"dpo_training_pairs": dpo_data})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -152,6 +236,7 @@ async def get_feedback_trends():
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
     
 
 
@@ -296,49 +381,17 @@ def ask_gpt(code, model,error):
      # Store current debugging session info for feedback
     current_debug_session['code'] = code
     current_debug_session['error'] = error
-    prompt = (
-        "You are an expert coding assistant. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
-        "Follow these exact steps when debugging:\n"
-        "1. Identify any errors in the code.\n"
-        "2. Understand the user's intended functionality.\n"
-        "3. Detect syntax errors.\n"
-        "4. Check for semantic correctness.\n"
-        "5. Verify logical correctness.\n"
-        "6. Suggest improvements where necessary.\n"
-        "7. Identify security vulnerabilities (e.g., SQL Injection).\n\n"
-        "Rules:\n"
-        "- If you are CONFIDENT and can directly correct the code without external help, SKIP Thought/Action steps and IMMEDIATELY output the Corrected Code.\n"
-        "- If you NEED to search for solutions, first write:\n"
-        "  Thought: [Explain why you need to search.]\n"
-        "  Action: [Choose ONLY one: GitHub Search or Web Search]\n"
-        "  Action Input: [What to search for]\n\n"
-        "- NEVER mix Thought and Corrected Code together.\n\n"
-        "When providing the final fix:\n"
-        "**Corrected Code:**\n"
-        "```[language]\n"
-        "[your corrected code]\n"
-        "```\n\n"
-        "**Explanation:**\n"
-        "[Explain clearly what was wrong and how you fixed it.]\n\n"
-        "=== User Code ===\n"
-        f"{code}\n\n"
-        "=== Error Message ===\n"
-        f"{error}\n\n"
-        "=== Begin your analysis below ===\n"
-
-    )
-
+    
 
     # Setup the model
     llm_model = ChatGroq(model=model)
 
    
-    
-
+    prompt = prompt_manager.get_prompt(code, error)
     tools = [
     Tool(name="GitHub Search", func=search_github_issues, description="Search relevant GitHub issues"),
     Tool(name="Web Search", func=serp_tool.run, description="Google search for coding errors, solutions, docs"),
-    
+    Tool(name="Stack Overflow Search", func=search_stackoverflow, description="Search Stack Overflow for relevant programming questions")
      ]
 
     # Step 1: Create the ReAct agent with tools
