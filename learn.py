@@ -10,28 +10,31 @@ import json
 
 def AI_Code_Reviewer(code):
     prompt = f'''You are a strict code reviewer. 
-                Here is the code:
+                    user_prompt = f"""
+        Analyze the following code and return a score from 0 to 100 based only on:
+        1. Code readability
+        2. Naming conventions
+        3. Modularity and reuse
+        4. Commenting and documentation
+        5. Error handling (if applicable)
 
-                {code}
+        Use a reasoning-based approach (Chain of Thought) to assess each category out of 20,
+        then sum them for a final score. Output ONLY this exact JSON format:
 
-                Analyze the following code and return a score from 0 to 100 based only on:
-                1. Code readability
-                2. Naming conventions
-                3. Modularity and reuse
-                4. Commenting and documentation
-                5. Error handling (if applicable)
+        {{
+        "readability": "...",
+        "efficiency": "...",
+        "modularity": "...",
+        "comments": "...",
+        "overall_score": <number>
+        }}
 
-                Respond only in this exact JSON format. Do not add explanations or markdown:
-
-                {{
-                "readability": "Good",
-                "efficiency": "Moderate",
-                "modularity": "Excellent",
-                "comments": "Lacking",
-                "overall_score": 75
-                }}
-                Only output this JSON list. Do not include any extra text.
-                '''
+        Do not include markdown, explanations, or any extra output.
+        Code:
+        ```python
+        {code}
+        ```
+    '''
 
     try:
         llm = ChatGroq(temperature=0.2, model_name="llama3-70b-8192")

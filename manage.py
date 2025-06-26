@@ -6,7 +6,7 @@ from textblob import TextBlob
 class PromptManager:
     def __init__(self):
         self.base_prompt_template = (
-            "You are an expert coding assistant. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
+            "You are an expert coding assistant who teaches kids. Your task is to review code, identify bugs or issues, and provide the corrected code along with explanations.\n\n"
         "Follow these exact steps when debugging:\n"
         "1. Identify any errors in the code.\n"
         "2. Understand the user's intended functionality.\n"
@@ -100,7 +100,7 @@ class PromptManager:
             self.dynamic_sections['solution_patterns'] = "\nSuccessful solution patterns:\n" + \
                 "\n".join(f"- Consider: {pattern}" for pattern in patterns['successful_patterns'][:3])
 
-    def get_prompt(self, code: str, error: str) -> str:
+    def get_prompt(self, code: str, error: str,grade:str) -> str:
         """Get the current prompt template, updating if necessary."""
         current_time = datetime.utcnow()
         
@@ -118,6 +118,7 @@ class PromptManager:
 
         # Add the current context
         prompt += (
+            f"Imagine you are teaching to {grade} student. explain to them like in a way teachers explain to them"
             f"=== User Code ===\n"
             f"{code}\n\n"
             f"=== Error Message ===\n"

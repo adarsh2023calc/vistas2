@@ -354,7 +354,7 @@ def clean_llm_output_with_groq(raw_output):
             {"role": "system", "content": "You are an assistant that cleans malformed LLM output."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.2
+        temperature=0.1
     )
 
     return response.choices[0].message.content.strip()
@@ -377,7 +377,7 @@ def execute_code(language,code):
 
 
 # Helper function to interact with the GPT API
-def ask_gpt(code, model,error):
+def ask_gpt(code, model,error,grade):
      # Store current debugging session info for feedback
     current_debug_session['code'] = code
     current_debug_session['error'] = error
@@ -387,7 +387,7 @@ def ask_gpt(code, model,error):
     llm_model = ChatGroq(model=model)
 
    
-    prompt = prompt_manager.get_prompt(code, error)
+    prompt = prompt_manager.get_prompt(code, error,grade)
     tools = [
     Tool(name="GitHub Search", func=search_github_issues, description="Search relevant GitHub issues"),
     Tool(name="Web Search", func=serp_tool.run, description="Google search for coding errors, solutions, docs"),
@@ -423,9 +423,9 @@ async def home(request: Request):
 
 # Form submission (POST)
 @app.post("/", response_class=HTMLResponse)
-async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...),error:str=Form(...)):
+async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...),error:str=Form(...),grade:str=Form(...)):
     print(f"Selected Model: {model}")  # Debugging line
-    output = ask_gpt(code, model,error)  
+    output = ask_gpt(code, model,error,grade)  
     if len(code.split()) > 1000:
         code = "\n".join(code.split("\n")[:100]) + "\n# Code truncated due to size limit"
     code_debugging_output= execute_code(language,code)
