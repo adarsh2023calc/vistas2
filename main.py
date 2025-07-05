@@ -48,7 +48,8 @@ class User(BaseModel):
     username: str
     password: str
 
-
+class CodeInput(BaseModel):
+    code: str
 # Global variables to store current debugging session info
 
 
@@ -382,6 +383,15 @@ def ask_gpt(code, model,error,grade):
     current_debug_session['code'] = code
     current_debug_session['error'] = error
     
+    if model=="salesforce":
+        url = "https://74f2-34-134-122-222.ngrok-free.app/generate"
+        # Optional: send as query parameter (if your FastAPI app supports GET)
+        params = {"prompt": code}
+
+        response = requests.post(url, json=params)  # use `json=`, NOT `params=`
+        response_json = response.json()
+        print(response_json)
+        return response_json.response
 
     # Setup the model
     llm_model = ChatGroq(model=model)
@@ -422,6 +432,11 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "code":"","output": "", "model": "","error":""})
 
 # Form submission (POST)
+@app.get("/quiz.html",response_class=HTMLResponse)
+async def quiz(request:Request):
+    return templates.TemplateResponse("quiz.html",{"request":request})
+
+
 @app.post("/", response_class=HTMLResponse)
 async def ask_groq(request: Request, code: str = Form(...), model: str = Form(...),language:str=Form(...),error:str=Form(...),grade:str=Form(...)):
     print(f"Selected Model: {model}")  # Debugging line
@@ -430,6 +445,7 @@ async def ask_groq(request: Request, code: str = Form(...), model: str = Form(..
         code = "\n".join(code.split("\n")[:100]) + "\n# Code truncated due to size limit"
     code_debugging_output= execute_code(language,code)
     code_quality_response = AI_Code_Reviewer(code)
+    generateMermaid(output)
     return templates.TemplateResponse("index.html", {"request": request, "output": output, "code": code, "model": model,"debug":code_debugging_output,"code_quality":code_quality_response})
 
 
@@ -526,4 +542,61 @@ async def learn(request: LearnRequest):
 
 
 
+@app.post("/mermaid")
+def generateMermaid(code: CodeInput):
+    prompt = f'''You're a software assistant.
+
+        Analyze the following function and generate a **Mermaid.js flowchart** that represents the **data flow**.
+
+        Python code snippet:
+        {code}
+        Use this format **exactly** and don't add anything else: 
+
+        ```mermaid
+        flowchart TD
+            User -->|x| process_data
+            User -->|y| process_data
+            process_data -->|z| result
+            process_data -->|result| User'''
+
+
+    llm = ChatGroq(temperature=0.0, model_name="llama3-70b-8192")
+    response = llm.invoke(prompt)
+    print(response)
+    with open("templates/dfd_mermaid.md","w") as file:
+        file.write(response.content)
+        
+    return {"mermaid_code": response.content}
+    
+
+@app.post("/quiz")
+def GenerateQuiz(code:CodeInput):
+    prompt =f"""
+        You are a quiz generator.
+
+        Given a corrected code snippet, your task is to create a multiple-choice quiz consisting of 5 questions in the following JSON format:
+        {{
+        "Questions": [List of questions as strings],
+        "Options": [[List of 5 options per question], ...],
+        "Answer": [List of correct answers, matching exactly with one of the options]
+        }}
+
+        Guidelines:
+        - The questions should test understanding of the code: logic, output, syntax, bugs, or concepts.
+        - Each question must have **exactly 5** diverse and plausible options.
+        - Only **one** correct answer per question.
+        - The answer text must match **exactly** one of the provided options.
+
+        Here is the corrected code:
+        {code}
+        Give the output only in json format and nothing else and the questions should be only 
+        based on theoritical concepts
+        """
+
+    
+    llm = ChatGroq(temperature=0.0, model_name="llama3-70b-8192")
+    response = llm.invoke(prompt)
+    result = json.loads(response.content)
+    return {"Quiz": result}
+    
 

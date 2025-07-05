@@ -8,3 +8,12 @@ langchain-groq
 pymongo
 google-search-results
 python-multipart
+pydantic
+python-dotenv
+textblob
+passlib
+langchain
+langchain_groq
+groq
+requests
+torch
