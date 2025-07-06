@@ -19,13 +19,14 @@
         </div>
 
           <div class="text-center pt-4">
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-xl shadow-md">
+                <button id="submitid" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-xl shadow-md">
                     Submit Quiz
                 </button>
           </div>
     </div>
 
     <script>
+        document.addEventListener("DOMContentLoaded", () => {
         const QuizData = JSON.parse(sessionStorage.getItem("quizData"));
         if (! QuizData){
             document.getElementById("quiz-container").innerText = "No quiz data found.";
@@ -48,45 +49,76 @@
                     </label>
                 `).join('');
 
+                const resultId = `result-${index}`;
+                const buttonId = `check-btn-${index}`;
                 QuestionElement.innerHTML = `
                     <p class="text-xl font-semibold text-indigo-700 mb-4">Q${index + 1}: ${q}</p>
                     ${optionsHTML}
                     <div class="mt-4">
-                    <button onclick="checkAnswer(${index},${answers[index]})" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg shadow">
-                        Check Answer
-                    </button>
-                    <p id="result-${index}" class="mt-2 font-medium text-sm"></p>
+                    <p id="result-${resultId}" class="mt-2 font-medium text-sm"></p>
                     </div>
                 `;
 
                 document.getElementById("quiz-container").appendChild(QuestionElement);
-
+        
             });
 
+            ShowScores(questions, answers);
+        }
+        
+        });
+
+        
+        async function ShowScores(questions, answers) {
+            alert("ShowScores function called");
+            const submitBtn = document.getElementById("submitid");
+            submitBtn.addEventListener("click", () => {
+            let score = 0;
+            // Clear previous results
+            const results = document.querySelectorAll("[id^='result-']");
+            results.forEach(result => {
+                result.textContent = "";
+                result.className = "mt-2 text-gray-600 font-medium";
+            });
+            
+            questions.forEach((_, index) => {
+                const selected = document.querySelector(`input[name="q${index}"]:checked`);
+                const resultElem = document.getElementById(`result-${index}`);
+        
+                if (!selected) {
+                    resultElem.textContent = "⚠️ Not answered.";
+                    resultElem.className = "mt-2 text-yellow-600 font-medium";
+                    return;
+                }
+
+                const userAnswer = selected.value;
+                const correctAnswer = answers[index];
+
+                if (userAnswer === correctAnswer) {
+                    resultElem.textContent = "✅ Correct!";
+                    resultElem.className = "mt-2 text-green-600 font-semibold";
+                    score++;
+                } else {
+                    resultElem.textContent = `❌ Incorrect! Correct answer: ${correctAnswer}`;
+                    resultElem.className = "mt-2 text-red-600 font-semibold";
+                }
+                
+            });
+
+            // Show total score
+            const scoreDisplay = document.createElement("div");
+            scoreDisplay.className = "text-center mt-6 text-xl font-bold text-indigo-800";
+            scoreDisplay.innerHTML = `You scored ${score} out of ${questions.length}`;
+            document.getElementById("quiz-container").appendChild(scoreDisplay);
+
+            // Disable submit button after submission
+            submitBtn.disabled = true;
+            submitBtn.classList.add("opacity-50", "cursor-not-allowed");
+            submitBtn.textContent = "Quiz Submitted";
+        });
         }
 
-        function checkAnswer(index,answer){
-            const selected = document.querySelector(`input[name="q${index}"]:checked`);
-            const resultElem = document.getElementById(`result-${index}`);
-
-            if (!selected) {
-                resultElem.textContent = "Please select an option.";
-                resultElem.className = "mt-2 text-yellow-600 font-medium";
-                return;
-            }
-
-            const userAnswer = selected.value;
-            const correctAnswer = answer;
-
-            if (userAnswer === correctAnswer) {
-                resultElem.textContent = "✅ Correct!";
-                resultElem.className = "mt-2 text-green-600 font-semibold";
-            } else {
-                resultElem.textContent = `❌ Incorrect! Correct answer: ${correctAnswer}`;
-                resultElem.className = "mt-2 text-red-600 font-semibold";
-            }
-        }
-    
+        
         
     </script>
     

@@ -597,6 +597,7 @@ def GenerateQuiz(code:CodeInput):
     llm = ChatGroq(temperature=0.0, model_name="llama3-70b-8192")
     response = llm.invoke(prompt)
     result = json.loads(response.content)
+    print(result)
     return {"Quiz": result}
     
 
