@@ -1,18 +1,13 @@
-Here is the Mermaid.js flowchart that represents the data flow of the given Python code snippet:
-
+Here is the Mermaid.js flowchart representing the data flow of the `calculate_average` function:
 ```mermaid
 flowchart TD
-    Input -->|code| Analyze
-    Analyze -->|cleaned_response| Output
-    Analyze -->|issue_identification| Review
-    Review -->|typo_identification| Correct
-    Correct -->|corrected_code| Output
-    Correct -->|explanation| Output
+    nums -->|list of numbers| calculate_average
+    calculate_average -->|total = 0| calculate_average
+    calculate_average -->|iterate over list| for_loop
+    for_loop -->|add number to total| calculate_average
+    for_loop -->|i = i + 1| for_loop
+    for_loop -->|i < len(numbers)| for_loop
+    calculate_average -->|average = total / len(numbers)| calculate_average
+    calculate_average -->|average| print
+    print -->|The average is: average| User
 ```
-
-This flowchart represents the data flow as follows:
-
-* The input code is analyzed, which produces a cleaned response.
-* The analysis also identifies the issue in the code, which is then reviewed.
-* The review process identifies a typo in the code, which is then corrected.
-* The corrected code and an explanation of the correction are output as the final result.
